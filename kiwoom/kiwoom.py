@@ -8,23 +8,25 @@ from beautifultable import BeautifulTable
 class Kiwoom(QAxWidget): #QAxWidget 상속
     def __init__(self):
         super().__init__()
-        self.login_event_loop = QEventLoop() # 로그인 담당 이벤트 루프
-        self.get_deposit_loop = QEventLoop() # 예수금 담당 이벤트 루프
-        self.get_account_evaluation_balance_loop = QEventLoop() # 계좌 잔고 조회 이벤트 루프
+
+        # 이벤트 루프 관련 함수
+        self.login_event_loop = QEventLoop() 
+        self.account_loop = QEventLoop()
 
 
         #계좌 관련 함수
         self.account_number = None
-        self.total_buy_money = 0
-        self.total_evaluation_money = 0
-        self.total_evaluation_profit_and_loss_money = 0
-        self.total_yield = 0
+        self.total_buy_money = None
+        self.total_evaluation_money = None
+        self.total_evaluation_profit_and_loss_money = None
+        self.total_yield = None
         self.account_stock_dict = {}
+        self.not_signed_account_dict = {}
 
         # 예수금 관련 변수
-        self.deposit = 0
-        self.withdraw_deposit = 0
-        self.order_deposit = 0
+        self.deposit = None
+        self.withdraw_deposit = None
+        self.order_deposit = None
 
         # 화면 번호
         self.screen_my_account = "1000"
@@ -37,7 +39,7 @@ class Kiwoom(QAxWidget): #QAxWidget 상속
         self.get_account_info() # 계좌 번호만 얻어오기
         self.get_deposit_info()  # 예수금 관련된 정보 얻어오기
         self.get_account_evaluation_balance()  # 계좌평가잔고내역 얻어오기
-
+        self.not_signed_account() # 미체결내역 얻어오기
         self.menu()
 
     # COM 오브젝트 생성.
@@ -118,6 +120,7 @@ class Kiwoom(QAxWidget): #QAxWidget 상속
             print("2. 개인 정보 조회")
             print("3. 예수금 조회")
             print("4. 계좌 잔고 조회")
+            print("5. 미체결 내역 조회")
             print("Q. 프로그램 종료")
             sel = input("=> ")
 
@@ -132,6 +135,8 @@ class Kiwoom(QAxWidget): #QAxWidget 상속
                 self.print_get_deposit_info()
             elif sel == "4":
                 self.print_get_account_evaulation_balance_info()
+            elif sel == "5":
+                self.print_not_signed_account()
 
     def print_login_connect_state(self):
         os.system('cls')
@@ -181,34 +186,70 @@ class Kiwoom(QAxWidget): #QAxWidget 상속
 
         table = self.make_table()
         print("<멀티 데이터>")
-        print(f"보유 종목 수 : {len(self.account_stock_dict)}개")
-        print(table)
+        if len(self.account_stock_dict) == 0:
+            print("보유한 종목이 없습니다!")
+        else:
+            print(f"보유 종목 수 : {len(self.account_stock_dict)}개")
+            print(table)
         input() #아무키나 눌러 다음 수행
 
 
-    def make_table(self):
+    def make_table(self, sRQName):
         table = BeautifulTable()
         table = BeautifulTable(maxwidth=150)
-        for stock_code in self.account_stock_dict:
-            stock = self.account_stock_dict[stock_code]
-            stockList = []
-            for key in stock:
-                output = None
 
-                if key == "종목명":
-                    output = stock[key]
-                elif key == "수익률(%)":
-                    output = str(stock[key]) + "%"
-                elif key == "보유수량" or key == "매매가능수량":
-                    output = str(stock[key]) + "개"
-                else:
-                    output = str(stock[key]) + "원"
-                stockList.append(output)
-            table.rows.append(stockList)
-        table.columns.header = ["종목명", "평가손익",
-                                "수익률", "매입가", "보유수량", "매매가능수량", "현재가"]
-        table.rows.sort('종목명')
+        if sRQName == "계좌평가잔고내역요청":
+            for stock_code in self.account_stock_dict:
+                stock = self.account_stock_dict[stock_code]
+                stockList = []
+                for key in stock:
+                    output = None
+
+                    if key == "종목명":
+                        output = stock[key]
+                    elif key == "수익률(%)":
+                        output = str(stock[key]) + "%"
+                    elif key == "보유수량" or key == "매매가능수량":
+                        output = str(stock[key]) + "개"
+                    else:
+                        output = str(stock[key]) + "원"
+                    stockList.append(output)
+                table.rows.append(stockList)
+            table.columns.header = ["종목명", "평가손익",
+                                    "수익률", "매입가", "보유수량", "매매가능수량", "현재가"]
+            table.rows.sort('종목명')
+
+        elif sRQName == "실시간미체결요청":
+            for stock_order_number in self.not_signed_account_dict:
+                stock = self.not_signed_account_dict[stock_order_number]
+                stockList = [stock_order_number]
+                for key in stock:
+                    output = None
+                    if key == "주문가격" or key == "현재가":
+                        output = str(stock[key]) + "원"
+                    elif '량' in key:
+                        output = str(stock[key]) + "개"
+                    elif key == "종목코드":
+                        continue
+                    else:
+                        output = stock[key]
+                    stockList.append(output)
+                table.rows.append(stockList)
+            table.columns.header = ["주문번호", "종목명", "주문구분", "주문가격", "주문수량",
+                                    "미체결수량", "체결량", "현재가", "주문상태"]
+            table.rows.sort('주문번호')
         return table
+
+    def print_not_signed_account(self):
+        os.system('cls')
+        print()
+        table = self.make_table("실시간미체결요청")
+        if len(self.not_signed_account_dict) == 0:
+            print("미체결 내역이 없습니다!")
+        else:
+            print(table)
+        input()
+
     #   [SetInputValue() 함수]
         
     #   SetInputValue(
@@ -257,7 +298,7 @@ class Kiwoom(QAxWidget): #QAxWidget 상속
         self.dynamicCall("CommRqData(QString, QString, int, QString)",
                          "예수금상세현황요청", "opw00001", nPrevNext, self.screen_my_account)
 
-        self.get_deposit_loop.exec_()
+        self.account_loop.exec_()
 
     def get_account_evaluation_balance(self, nPrevNext=0):
         self.dynamicCall("SetInputValue(QString, QString)",
@@ -269,8 +310,20 @@ class Kiwoom(QAxWidget): #QAxWidget 상속
         self.dynamicCall("CommRqData(QString, QString, int, QString)",
                          "계좌평가잔고내역요청", "opw00018", nPrevNext, self.screen_my_account)
 
-        if not self.get_account_evaluation_balance_loop.isRunning():
-            self.get_account_evaluation_balance_loop.exec_()
+        if not self.account_loop.isRunning():
+            self.account_loop.exec_()
+
+    def not_signed_account(self, nPrevNext=0):
+        self.dynamicCall("SetInputValue(QString, QString)",
+                         "계좌번호", self.account_number)
+        self.dynamicCall("SetInputValue(QString, QString)", "전체종목구분", "0")
+        self.dynamicCall("SetInputValue(QString, QString)", "매매구분", "0")
+        self.dynamicCall("SetInputValue(QString, QString)", "체결구분", "1")
+        self.dynamicCall("CommRqData(QString, QString, int, QString)",
+                         "실시간미체결요청", "opt10075", nPrevNext, self.screen_my_account)
+
+        if not self.account_loop.isRunning():
+            self.account_loop.exec_()
 
     # sScrNo는 "1000", 
  
@@ -319,7 +372,7 @@ class Kiwoom(QAxWidget): #QAxWidget 상속
                 "GetCommData(QString, QString, int, QString)", sTrCode, sRQName, 0, "주문가능금액")
             self.order_deposit = int(order_deposit)
             self.cancel_screen_number(self.screen_my_account)
-            self.get_deposit_loop.exit()
+            self.account_loop.exit()
 
 
         # [ opw00018 : 계좌평가잔고내역요청 ]
@@ -424,7 +477,81 @@ class Kiwoom(QAxWidget): #QAxWidget 상속
                 self.get_account_evaluation_balance("2")
             else:
                 self.cancel_screen_number(self.screen_my_account)
-                self.get_account_evaluation_balance_loop.exit()
+                self.account_loop.exit()
+
+        elif sRQName == "실시간미체결요청":
+            cnt = self.dynamicCall(
+                "GetRepeatCnt(QString, QString)", sTrCode, sRQName)
+
+            for i in range(cnt):
+                stock_code = self.dynamicCall(
+                    "GetCommData(QString, QString, int, QString)", sTrCode, sRQName, i, "종목코드")
+                stock_code = stock_code.strip()
+
+                stock_order_number = self.dynamicCall(
+                    "GetCommData(QString, QString, int, QString)", sTrCode, sRQName, i, "주문번호")
+                stock_order_number = int(stock_order_number)
+
+                stock_name = self.dynamicCall(
+                    "GetCommData(QString, QString, int, QString)", sTrCode, sRQName, i, "종목명")
+                stock_name = stock_name.strip()
+
+                stock_order_type = self.dynamicCall(
+                    "GetCommData(QString, QString, int, QString)", sTrCode, sRQName, i, "주문구분")
+                stock_order_type = stock_order_type.strip().lstrip('+').lstrip('-')
+
+                stock_order_price = self.dynamicCall(
+                    "GetCommData(QString, QString, int, QString)", sTrCode, sRQName, i, "주문가격")
+                stock_order_price = int(stock_order_price)
+
+                stock_order_quantity = self.dynamicCall(
+                    "GetCommData(QString, QString, int, QString)", sTrCode, sRQName, i, "주문수량")
+                stock_order_quantity = int(stock_order_quantity)
+
+                stock_not_signed_quantity = self.dynamicCall(
+                    "GetCommData(QString, QString, int, QString)", sTrCode, sRQName, i, "미체결수량")
+                stock_not_signed_quantity = int(stock_not_signed_quantity)
+
+                stock_signed_quantity = self.dynamicCall(
+                    "GetCommData(QString, QString, int, QString)", sTrCode, sRQName, i, "체결량")
+                stock_signed_quantity = int(stock_signed_quantity)
+
+                stock_present_price = self.dynamicCall(
+                    "GetCommData(QString, QString, int, QString)", sTrCode, sRQName, i, "현재가")
+                stock_present_price = int(
+                    stock_present_price.strip().lstrip('+').lstrip('-'))
+
+                stock_order_status = self.dynamicCall(
+                    "GetCommData(QString, QString, int, QString)", sTrCode, sRQName, i, "주문상태")
+                stock_order_status = stock_order_status.strip()
+
+                if not stock_order_number in self.not_signed_account_dict:
+                    self.not_signed_account_dict[stock_order_number] = {}
+
+                self.not_signed_account_dict[stock_order_number].update(
+                    {'종목코드': stock_code})
+                self.not_signed_account_dict[stock_order_number].update(
+                    {'종목명': stock_name})
+                self.not_signed_account_dict[stock_order_number].update(
+                    {'주문구분': stock_order_type})
+                self.not_signed_account_dict[stock_order_number].update(
+                    {'주문가격': stock_order_price})
+                self.not_signed_account_dict[stock_order_number].update(
+                    {'주문수량': stock_order_quantity})
+                self.not_signed_account_dict[stock_order_number].update(
+                    {'미체결수량': stock_not_signed_quantity})
+                self.not_signed_account_dict[stock_order_number].update(
+                    {'체결량': stock_signed_quantity})
+                self.not_signed_account_dict[stock_order_number].update(
+                    {'현재가': stock_present_price})
+                self.not_signed_account_dict[stock_order_number].update(
+                    {'주문상태': stock_order_status})
+
+            if sPrevNext == "2":
+                self.not_signed_account(2)
+            else:
+                self.cancel_screen_number(sScrNo)
+                self.account_loop.exit()
 
     #   [DisconnectRealData() 함수]
         
